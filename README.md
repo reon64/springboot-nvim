@@ -48,6 +48,7 @@ return {
         local springboot_nvim = require("springboot-nvim")
         vim.keymap.set("n", "<leader>jr", springboot_nvim.boot_run, { desc = "Spring Boot Run Project" })
         vim.keymap.set("n", "<leader>js", springboot_nvim.boot_stop, { desc = "Spring Boot Stop Project" })
+        vim.keymap.set("n", "<leader>jp", springboot_nvim.profiles, { desc = "Spring Boot Profiles" })
         vim.keymap.set("n", "<leader>jt", springboot_nvim.toggle_terminal, { desc = "Toggle Terminal" })
         vim.keymap.set("n", "<leader>jc", springboot_nvim.generate_class, { desc = "Java Create Class" })
         vim.keymap.set("n", "<leader>ji", springboot_nvim.generate_interface, { desc = "Java Create Interface" })

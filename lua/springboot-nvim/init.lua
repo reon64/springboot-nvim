@@ -38,20 +38,45 @@ local function get_run_command(args)
 		return "Unknown"
 	end
 
+	-- Load project-specific profiles from JSON
+	local config_file = vim.fn.stdpath("config") .. "/springboot_profiles.json"
+	local profiles = {}
+
+	if vim.fn.filereadable(config_file) == 1 then
+		local content = vim.fn.readfile(config_file)
+		local ok, data = pcall(vim.fn.json_decode, table.concat(content, "\n"))
+		if ok and type(data) == "table" then
+			local project = vim.fn.fnamemodify(project_root, ":t")
+			profiles = data[project] or {}
+		end
+	end
+
+	-- Combine profiles into a comma-separated string
+	local profile_arg = ""
+	if #profiles > 0 then
+		profile_arg = "--spring.profiles.active=" .. table.concat(profiles, ",")
+	end
+
+	-- Allow extra args from the function call
+	local extra_args = args or ""
+
 	local maven_file = vim.fn.findfile("pom.xml", project_root)
 	local gradle_file = vim.fn.findfile("build.gradle", project_root)
 
 	if maven_file ~= "" then
+		-- For Maven, append profiles as JVM args if needed
 		return string.format(
-			':call jobsend(b:terminal_job_id, "cd %s && mvn spring-boot:run %s \\n")',
+			':call jobsend(b:terminal_job_id, "cd %s && mvn spring-boot:run %s %s \\n")',
 			project_root,
-			args or ""
+			profile_arg,
+			extra_args
 		)
 	elseif gradle_file ~= "" then
 		return string.format(
-			':call jobsend(b:terminal_job_id, "cd %s && ./gradlew bootRun %s \\n")',
+			":call jobsend(b:terminal_job_id, \"cd %s && ./gradlew bootRun --args='%s' %s \\n\")",
 			project_root,
-			args or ""
+			profile_arg,
+			extra_args
 		)
 	else
 		print("No build file (pom.xml or build.gradle) found in the project root.")
@@ -206,14 +231,103 @@ local function setup()
 	)
 end
 
+-- Utility functions
+local function get_project_name()
+	return vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
+end
+
+local function add_new_profile()
+	local max_height = vim.api.nvim_win_get_height(0)
+	local max_width = vim.api.nvim_win_get_width(0)
+	local buf = vim.api.nvim_create_buf(false, true)
+
+	-- Load the last profile for the project
+	local config_file = vim.fn.stdpath("config") .. "/springboot_profiles.json"
+	local last_profile = ""
+	if vim.fn.filereadable(config_file) == 1 then
+		local content = vim.fn.readfile(config_file)
+		local ok, data = pcall(vim.fn.json_decode, table.concat(content, "\n"))
+		if ok and type(data) == "table" then
+			local project = get_project_name()
+			local project_profiles = data[project] or {}
+			if #project_profiles > 0 then
+				last_profile = project_profiles[#project_profiles]
+			end
+		end
+	end
+
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = math.floor(max_width * 0.5),
+		height = 1,
+		row = math.floor((max_height - 1) / 2),
+		col = math.floor((max_width - math.floor(max_width * 0.5)) / 2),
+		style = "minimal",
+		border = "rounded",
+		title = "Add new profile (" .. get_project_name() .. ")",
+		title_pos = "center",
+	})
+
+	vim.bo[buf].buftype = "nofile"
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].swapfile = false
+	vim.bo[buf].modifiable = true
+
+	-- Pre-fill last profile if it exists
+	if last_profile ~= "" then
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { last_profile })
+		vim.api.nvim_win_set_cursor(win, { 1, #last_profile })
+	end
+
+	-- Reset modified flag to avoid ":q" prompt
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+		buffer = buf,
+		callback = function()
+			vim.bo[buf].modified = false
+		end,
+	})
+
+	-- <Enter> mapping: overwrite the last profile
+	vim.keymap.set("i", "<CR>", function()
+		local line = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] or ""
+		if line ~= "" then
+			-- Ensure folder exists
+			vim.fn.mkdir(vim.fn.fnamemodify(config_file, ":h"), "p")
+
+			-- Save as single profile for this project (overwrite)
+			local all = {}
+			if vim.fn.filereadable(config_file) == 1 then
+				local content = vim.fn.readfile(config_file)
+				local ok, data = pcall(vim.fn.json_decode, table.concat(content, "\n"))
+				if ok and type(data) == "table" then
+					all = data
+				end
+			end
+
+			local project = get_project_name()
+			all[project] = { line } -- overwrite previous profiles
+
+			vim.fn.writefile({ vim.fn.json_encode(all) }, config_file)
+			vim.g.springboot_selected_profile = line
+			vim.notify("Profile saved for project " .. project .. ": " .. line)
+		end
+
+		if vim.api.nvim_win_is_valid(win) then
+			vim.api.nvim_win_close(win, true)
+		end
+	end, { buffer = buf })
+
+	vim.cmd("startinsert")
+end
+
 return {
+	profiles = add_new_profile,
 	setup = setup,
 	boot_run = boot_run,
 	boot_stop = boot_stop,
 	toggle_terminal = toggle_terminal,
 	incremental_compile = incremental_compile,
 	fill_package_details = fill_package_details,
-	foo = foo,
 	create_ui = generate_class.create_ui,
 	close_ui = springboot_nvim_ui.close_ui,
 	generate_class = springboot_nvim_ui.create_generate_class_ui,
