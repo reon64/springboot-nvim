@@ -54,7 +54,7 @@ local function get_run_command(args)
 	-- Combine profiles into a comma-separated string
 	local profile_arg = ""
 	if #profiles > 0 then
-		profile_arg = "--spring.profiles.active=" .. table.concat(profiles, ",")
+		profile_arg = "--spring.output.ansi.enabled=ALWAYS --spring.profiles.active=" .. table.concat(profiles, ",")
 	end
 
 	-- Allow extra args from the function call
@@ -314,9 +314,9 @@ local function add_new_profile()
 
 		if vim.api.nvim_win_is_valid(win) then
 			vim.api.nvim_win_close(win, true)
+			vim.cmd("stopinsert")
 		end
 	end, { buffer = buf })
-
 	vim.cmd("startinsert")
 end
 
